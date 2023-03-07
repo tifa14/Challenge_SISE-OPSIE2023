@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 import pandas as pd
 import numpy as np
 
@@ -11,7 +10,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 import matplotlib.pyplot as plt
+
+from io import BytesIO
+
 import plotly.express as px
+import plotly.graph_objs as go
 
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource
@@ -24,14 +27,22 @@ from sklearn.preprocessing import LabelEncoder
 
 entete= ["date","IpS","IpD","Protocol","PortD","Regle","Acces","carteReseau","Nan","Inconnu"]
 data = pd.read_table('firewall.log', sep=';', names=entete)
+
 data["date"] = pd.to_datetime(data["date"])
+
+# Extraction de certaines informations de la colonne "date"
+data["heure"] = pd.to_datetime(data["date"]).dt.hour
+data["minute"] = pd.to_datetime(data["date"]).dt.minute
+
 
 
 def home():
-    st.title("Accueil")
-    st.write("Bienvenue sur la page d'accueil !")
-    
-    st.write("Voici vos données :")
+    st.title("Accueil 🏠")
+    st.header("Bienvenue sur la page d'accueil !")
+
+    image= "https://www.larochellegc.com/wp-content/uploads/2020/06/Analytique-Visualisation-Donnees-Analytique-scaled-925x590-c-center.jpg"
+    st.markdown(f'<p style="text-align: center;"><img src="{image}"  width="50%"></p>', unsafe_allow_html=True)
+    st.header("Voici vos données :")
     st.write(data)
     
     
@@ -41,50 +52,105 @@ def page2():
     
     data['Acces'] = data['Acces'].replace({'Permit': 1, 'Deny': 0})
 
+    colonne_selectionDef = ['Acces', 'PortD']
+    
 
-    X = data[['Acces', 'PortD']]
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
+    # Widgets pour sélectionner les colonnes à utiliser
+    selected_columnsDef = st.multiselect("Sélectionnez les colonnes à utiliser", colonne_selectionDef)
+    
+    
     st.header("Données Sélectionnées : ")
-    st.write(X)
+    st.write(data[selected_columnsDef])
     
-    n_clusters = st.sidebar.slider("Nombre de clusters", min_value=2, max_value=10, value=3)
-    kmeans = KMeans(n_clusters=n_clusters)
+    if len(selected_columnsDef) > 0:
     
+        X = data[selected_columnsDef]
+        
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
     
-    data['Cluster'] = kmeans.fit_predict(X_scaled)
+       
+        
+        n_clusters = st.sidebar.slider("Nombre de clusters", min_value=2, max_value=10, value=3)
+        kmeans = KMeans(n_clusters=n_clusters)
+        
+        
+        data['Cluster'] = kmeans.fit_predict(X_scaled)
+        
+        st.header("K-means : ")
+        st.write("Regroupe les événements de sécurité similaires en groupes. Pour identifier les tendances nos logs du Firewall")
+        figScatterK = px.scatter(data, y='PortD',x='Acces',color='Cluster', hover_data=data.columns)
+        st.plotly_chart(figScatterK)
+    else :
+        st.warning("Veuillez sélectionner au moins une colonne.")
     
-    st.header("K-means : ")
-    st.write("Regroupe les événements de sécurité similaires en groupes. Pour identifier les tendances nos logs du Firewall")
-    figScatterK = px.scatter(data, y='PortD',x='Acces',color='Cluster', hover_data=data.columns)
-    st.plotly_chart(figScatterK)
     
     
     ######################################################
-    
-    data["heure"] = data['date'].dt.hour
-    
+
     st.header("Régression : ")
     st.write("Analyse les relations entre les variables sélectionées, pour identifier les facteurs qui contribuent aux attaques et aux incidents de sécurité.")
-    Xdata = pd.get_dummies(data[['PortD', 'Protocol', 'Regle', 'heure']])
     
-    ydata = data['Acces'].replace({'Permit': 1, 'Deny': 0})
-    st.header("Données Sélectionnées : ")
-    st.write(Xdata)
+    colonne_selectionDef2 = ['PortD', 'Protocol', 'Regle', 'heure']
+    selected_columnsDef2 = st.multiselect("Sélectionnez les colonnes à utiliser", colonne_selectionDef2)
     
-    testsize = st.sidebar.slider("% test", min_value=10, max_value=90, value=20)
-    X_train, X_test, y_train, y_test = train_test_split(Xdata, ydata, test_size=testsize*0.01)
-    model = LogisticRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    accuracy = (y_pred == y_test).mean()
-    #st.write("Précision du modèle :", accuracy)
+    if len(selected_columnsDef2) > 0:
     
-    st.write("Coefficients de la régression :")
-
-    st.table(pd.DataFrame(model.coef_, columns=Xdata.columns))
+        Xdata = pd.get_dummies(data[selected_columnsDef2])
+        
+        ydata = data['Acces'].replace({'Permit': 1, 'Deny': 0})
+        st.header("Données Sélectionnées : ")
+        st.write(Xdata)
+        
+        testsize = st.sidebar.slider("% test", min_value=10, max_value=90, value=20)
+        X_train, X_test, y_train, y_test = train_test_split(Xdata, ydata, test_size=testsize*0.01)
+        model = LogisticRegression()
+        model.fit(X_train, y_train)
+        #y_pred = model.predict(X_test)
+    
+        st.write("Coefficients de la régression :")
+    
+        st.table(pd.DataFrame(model.coef_, columns=Xdata.columns))
+        
+        
+        # Créer une matrice de corrélation
+        datacor = data[["date","heure","Protocol","PortD","Regle","Acces"]]
+        corr = datacor.corr()
+        
+        # Créer une figure avec Plotly
+        figcor = go.Figure(data=go.Heatmap(
+                           z=corr.values,
+                           x=corr.index.values,
+                           y=corr.columns.values))
+        
+        # Ajouter des annotations à la matrice de corrélation
+        for i in range(len(corr.index)):
+            for j in range(len(corr.columns)):
+                figcor.add_annotation(
+                    x=corr.index[i],
+                    y=corr.columns[j],
+                    text=str(round(corr.values[i][j], 2)),
+                    showarrow=False,
+                    font=dict(size=12),
+                    xref='x1',
+                    yref='y1'
+                )
+        
+        # Modifier les propriétés de la figure
+        figcor.update_layout(
+            title='Matrice de corrélation',
+            xaxis_nticks=len(corr.index),
+            yaxis_nticks=len(corr.columns),
+            height=500,
+            width=500,
+            autosize=False
+        )
+        
+        # Afficher la figure dans Streamlit
+        st.plotly_chart(figcor)
+    else :
+        st.warning("Veuillez sélectionner au moins une colonne.")
+        
 
 ################################################################################################################################################################################################################################################
 def page3():
@@ -92,45 +158,93 @@ def page3():
     
     st.write("Cette partie permet de se mettre à la place de l'attaquant en utilisant uniquement les données à sa dispositon pour construire un modèle prédictif permettant de décider si une requête va être acceptée ou non")
 
-    le_ip = LabelEncoder()
     le_protocol = LabelEncoder()
+    
     # Convertir les adresses IP en nombres
     data['IpS'] = data['IpS'].apply(lambda x: int(ipaddress.ip_address(x)))
     data['IpD'] = data['IpD'].apply(lambda x: int(ipaddress.ip_address(x)))
+    
     data['Protocol'] = le_protocol.fit_transform(data['Protocol'])
     
-    # Extraction de certaines informations de la colonne "date"
-    data["heure"] = pd.to_datetime(data["date"]).dt.hour
-    data["minute"] = pd.to_datetime(data["date"]).dt.minute
-    data["jour_semaine"] = pd.to_datetime(data["date"]).dt.dayofweek
+    colonne_selection = ["IpS","IpD","Protocol","PortD", "heure", "minute"]
+
+    # Widgets pour sélectionner les colonnes à utiliser
+    selected_columns = st.multiselect("Sélectionnez les colonnes à utiliser", colonne_selection)
     
-    # Sélection des variables à utiliser pour la prédiction
-    Xdf = data[["IpS","IpD","Protocol","PortD", "heure", "minute", "jour_semaine"]]
+    # Sélection des colonnes choisies
+    Xdf = data[selected_columns]
+    
     ydf = data["Acces"]
     
-    
+
     st.header("Données Sélectionnées : ")
     st.write(Xdf)
     
-    # Normalisation des variables
-    scaler = StandardScaler()
-    Xdf = scaler.fit_transform(Xdf)
     
-    # Fractionnement des données en ensembles d'entraînement et de test
-    Xdf_train, Xdf_test, ydf_train, ydf_test = train_test_split(Xdf, ydf, test_size=0.3)
+    if len(selected_columns) > 0:
+        
+        # Normalisation des variables
+        scaler = StandardScaler()
+        Xdf = scaler.fit_transform(Xdf)
+        
+        # Fractionnement des données en ensembles d'entraînement et de test
+        Xdf_train, Xdf_test, ydf_train, ydf_test = train_test_split(Xdf, ydf, test_size=0.3)
+        
+        
+        st.header("Random Forest : ")
+        
+        # Entraînement du modèle Random Forest
+        rf = RandomForestClassifier(n_estimators=100)
+        rf.fit(Xdf_train, ydf_train)
+        
+        # Évaluation du modèle sur l'ensemble de test
+        score = rf.score(Xdf_test, ydf_test)
+        st.write("Précision du modèle :", score)
+        
+        ### Matrice Corr
+        # Créer une matrice de corrélation
+        datacor2 = data[["IpS","IpD","Protocol","PortD", "heure", "minute"]]
+        corr2 = datacor2.corr()
+        
+        # Créer une figure avec Plotly
+        figcor2 = go.Figure(data=go.Heatmap(
+                           z=corr2.values,
+                           x=corr2.index.values,
+                           y=corr2.columns.values))
+        
+        # Ajouter des annotations à la matrice de corrélation
+        for i in range(len(corr2.index)):
+            for j in range(len(corr2.columns)):
+                figcor2.add_annotation(
+                    x=corr2.index[i],
+                    y=corr2.columns[j],
+                    text=str(round(corr2.values[i][j], 2)),
+                    showarrow=False,
+                    font=dict(size=12),
+                    xref='x1',
+                    yref='y1'
+                )
+
+        
+        # Modifier les propriétés de la figure
+        figcor2.update_layout(
+            title='Matrice de corrélation',
+            xaxis_nticks=len(corr2.index),
+            yaxis_nticks=len(corr2.columns),
+            height=500,
+            width=500,
+            autosize=False
+        )
+        
+        # Afficher la figure dans Streamlit
+        st.plotly_chart(figcor2)
+        
+        
+    else :
+        st.warning("Veuillez sélectionner au moins une colonne.")
     
-    
-    st.header("Random Forest : ")
-    
-    # Entraînement du modèle Random Forest
-    rf = RandomForestClassifier(n_estimators=100)
-    rf.fit(Xdf_train, ydf_train)
-    
-    # Évaluation du modèle sur l'ensemble de test
-    score = rf.score(Xdf_test, ydf_test)
-    st.write("Précision du modèle :", score)
-    
-    #{pd.DataFrame(rf.coef_, columns=Xdf.columns))
+    st.header("Données Cible : ")
+    st.write(ydf)
 
     
     
@@ -141,7 +255,7 @@ def page3():
 
 ################################################################################################################################################################################################################################################
 def page1():
-    st.title("Visualisation")
+    st.title("Visualisation 📺")
 
     
     df = data
@@ -292,6 +406,21 @@ def page1():
     st.pyplot(fig7)    
     
     
+    
+    df_autorise = data[data['Acces'] == 'Permit']
+    counts = df_autorise['PortD'].value_counts()
+    top_10 = counts[:10]
+    
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.pie(top_10.values, labels=top_10.index, autopct='%1.1f%%')
+    ax.set_title('Top 10 Ports Autorisés')
+    
+    # On convertit le graphique en une image à afficher avec Streamlit
+    img = BytesIO()
+    fig.savefig(img, format='png')
+    st.image(img.getvalue(), use_column_width=True)
+    
+    
     ################## BOKEH
     
     # On filtre les flux autorisés
@@ -311,6 +440,8 @@ def page1():
     
     # On affiche le graphique avec Streamlit
     st.bokeh_chart(p, use_container_width=True)
+    
+    
         
     
     
@@ -322,8 +453,8 @@ def page1():
 ##################################### MENU ################################################################################################################################################
 # Créer une liste des pages
 pages = {
-    "Accueil": home,
-    "Visualisation": page1,
+    "Accueil 🏠": home,
+    "Visualisation 📺": page1,
     "Défensive 🛡": page2,
     "Offensive ⚔": page3
 }
