@@ -7,7 +7,7 @@ This repository presents how to set up our application using docker.
 How to use this repository
 
 Get Docker Desktop and run it
-Get the files from the "docker" folder and save them in the folder you will use.
+Get the files from the "Appstreamlit" folder and save them in the folder you will use.
 # Setup
 ```
 $ cd 'path/to/your/repository/folder'
