@@ -1,5 +1,6 @@
-# Challenge_SISE-OPSIE2023
-Challenge for the SISE and OPSIE master 
+# Challenge SISE(Statistics and Informatics for Data Science) and OPSIE(security) 2023
+
+The project is made up of several parts that offer a global vision that provides a dashboard on the state of the IS. It takes into account the analysis of traces as well as the treatment of events via a specific tool, without forgetting the determination of a model or even a trend and decision making.
 
 # Purpose of the repository
 This repository presents how to set up our application using docker.
